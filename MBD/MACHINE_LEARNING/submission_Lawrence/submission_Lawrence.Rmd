@@ -1,0 +1,328 @@
+---
+title: "Mathematics for Big Data -  Exercise 3"
+author: Lawrence Adu-Gyamfi (1484610)
+date: 06/06/2019
+output:
+  pdf_document: 
+    fig_caption: yes
+    number_sections: yes
+    toc: yes
+    df_print: kable
+    
+classoption: 12pt
+header-includes:
+  - \usepackage{"styles"}
+  - \usepackage{"caption-styles"}
+  #html_notebook: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE,
+	fig.height = 4
+)
+```
+
+\newpage
+# INTRODUCTION
+
+This report presents the code and the results of analysis and predicting the permeability using the variables in the rock dataset from the MASS package.
+
+The object rock from the library MASS contains different measurements on 48 rock samples from a petroleum reservoir. The response variable is the permeability of those rocks and the explanatory variables are the remaining variables.
+
+
+```{r load-libraries, include=F}
+# Load libraries
+library(nnet)
+library(MASS)
+attach(rock)
+```
+
+## Exploring the rock dataset
+
+The following shows some details about the rock dataset.
+
+Here we confirm the dataset indeed does have 48 observations for 4 predictors.
+```{r explore-dataset, echo=FALSE}
+(dim(rock))
+```
+
+Below is a sample of the dataset showing the first 6 observations.
+```{r echo=F}
+(head(rock))
+```
+
+And we we see a summary of some statistics of the dataset grouped by predictor.
+
+```{r echo=F}
+(summary(rock))
+```
+
+
+\newpage
+# QUESTION 1
+
+## Question 
+
+**Fit a 3-3-1 neural networks to model the permeability of the rocks (perm) taking as inputs the variables (area, peri and shape). Evaluate the goodness of the fit using the determination coefficients.**
+
+
+## Solution
+
+Below is the summary of fitting a 3-3-1 (3 neurons in the input layer, 3 in the hidden layer and 1 for the output) neural network model on the dataset.
+```{r fit-neural-network, echo=F}
+rock.nnet <- nnet(perm ~ area + peri + shape, size=3, linout=T)
+summary(rock.nnet)
+```
+
+
+Below is the RSS (Residuals Squared Sum) for the fitting the neural network on the dataset as it is:
+```{r}
+rock.nnet$value
+```
+ which is not very different from the TSS of the null model:
+
+```{r}
+(rock_TSS <- sum((perm - mean(perm))^2))
+```
+
+
+The performance of the model is shown below which is denoted the amont of variance in the dataset captured by the model
+
+```{r}
+(R2.nnet <- 1 - rock.nnet$value / rock_TSS)
+```
+
+We confirm indeed for now the model does not perform ver well with an R-squared value of approximately 0.
+
+
+### Fitting a Linear Model
+For the sake of comparison we fit a linear model to estimate the performance of the neural network model.
+
+```{r fit-linear-model, include=TRUE}
+rock.lm <- lm(perm ~ shape+area+peri, rock)
+(RSS.lm <- sum((perm - predict(rock.lm))^2))
+(R2.lm <- 1 - (RSS.lm / rock_TSS))
+```
+
+Comparing the RSS and the determination coefficients of both models we realise the linear model performs much better on the data than the typical neural network model constructed in this way.
+
+\newpage
+# QUESTION 2
+
+## Question
+
+**Ripley (1997) proposed fitting a neural network to this data with some previous transformations: log-scaling the permeability and dividing the predictors area and peri by 10000 units. Fit again the neural network and compare the results.**
+
+## Solution
+
+As demanded by the question, the permeability values are log-scaled, while the area and perimeter values are divided by 10000 as shown below.
+
+
+### Scaling of rock dataset
+```{r scale-dataset, include=TRUE}
+scaled_rock = rock
+scaled_rock$perm <- log(rock$perm)
+scaled_rock$area <- rock$area / 10000
+scaled_rock$peri <- rock$peri / 10000
+
+head(scaled_rock)
+```
+
+
+A new model is fitted to the scaled dataset, and the results of this model are shown below:
+
+### Fitting Neural Network Model to Scaled Dataset
+```{r fit-nnet-scaled,echo=F}
+scaled_rock.nnet <- nnet(perm ~ area + shape + peri, scaled_rock, size=3, linout=T)
+scaled_rock.nnet$value
+scaled_rock.TSS <- sum((scaled_rock$perm - mean(scaled_rock$perm))^2)
+```
+
+
+Using this approach a very significant determination coefficient value is obtained as shown above.
+```{r}
+(R2_scaled_rock <- 1 - scaled_rock.nnet$value / scaled_rock.TSS)
+```
+
+\newpage
+# QUESTION 3
+
+## Question
+
+**Obtain a graphical representation to visualize the residuals of the model and the fitted values.**
+
+## Solution
+In this section, the residuals and fitted values of each of the models are compared.
+
+The figure below compares the residuals of the two models using the unscaled and scaled data respectively.
+
+```{r, echo=F}
+par(mfrow=c(1,2))
+
+plot(x=rock.nnet$fitted.values, y=rock.nnet$residuals,xlab="Fitted Values",ylab="Residuals", main="Original Dataset")
+abline(0,0, lwd=2, col="red")
+
+plot(x=scaled_rock.nnet$fitted.values, y=scaled_rock.nnet$residuals,xlab="Fitted Values",ylab="Residuals", main="Scaled Dataset")
+abline(0,0, lwd=2, col="red")
+
+```
+
+The above graphs show much better behaved residuals when the data is scaled as recommended by Ripley.
+
+
+\newpage
+
+# QUESTION 4
+
+## Question
+
+**Assess the stability of the estimations by running the numerical algorithm 100 times.**
+
+
+## Solution
+
+In this section, the two models are run for 100 times and their subsequent results are compared.
+
+Below are the results:
+
+```{r run-100-sequences, include=F}
+RSS <- NULL
+RSS_scaled <- NULL
+best.RSS <- rock.nnet$value
+best.RSS_scaled <- scaled_rock.nnet$value
+```
+
+
+Below is the plot of the RSS for the original dataset (without scaling) run over a 100 iterations. 
+
+
+``` {r include=F, echo=F}
+for (i in 1:100){
+  aux.nnet <- nnet(perm ~ area+shape+peri, rock, size=3, linout=T)
+  RSS[i] <- aux.nnet$value
+  if (aux.nnet$value < best.RSS)
+    {
+    rock.nnet <- aux.nnet
+    best.RSS <- rock.nnet$value
+  }
+  }
+```
+
+The determination coefficient is shown below:
+```{r echo=F}
+(R2.nnet <- 1 - rock.nnet$value / rock_TSS)
+```
+
+```{r view-final-R2-values, echo=F, fig.show="asis"}
+
+par(mfrow=c(1,1))
+plot(1:100, RSS, type="s", xlab="Iteration")
+```
+
+
+```{r include=F}
+
+for (i in 1:100){
+  aux.nnet <- nnet(perm ~ area+shape+peri, scaled_rock, size=3, linout=T)
+  RSS_scaled[i] <- aux.nnet$value
+  if (aux.nnet$value < best.RSS_scaled){
+    scaled_rock.nnet <- aux.nnet
+    best.RSS_scaled <- scaled_rock.nnet$value} 
+  }
+```
+
+The determination coefficient is shown below:
+
+```{r echo=F}
+(scaled_R2.nnet <- 1 - scaled_rock.nnet$value / scaled_rock.TSS)
+```
+
+
+Below is the plot of the RSS for the dataset with scaling, run over a 100 iterations. 
+
+```{r view-final-R2-values-scaled, echo=F, fig.show="asis"}
+par(mfrow=c(1,1))
+plot(1:100, RSS_scaled, type="s", xlab="Iteration")
+```
+
+Comparing the R_squared values for both models, it is evident that the model based on the scaled dataset performs much better, even if the value for the model on the original dataset is significant and improved.
+
+From the plots of the residuals over the different iterations,we notice the original model is able to obtain the lowest RSS on few occassions compared to the scaled model which rather for most of the iterations has a lower RSS value.
+
+
+\newpage
+# Appendix
+
+## Source Code
+
+
+```{r eval=F}
+library(MASS)
+library(nnet)
+attach(rock)
+
+dim(rock)
+summary(rock)
+head(rock)
+
+
+rock.nnet <- nnet(perm ~ area + peri + shape, size=3, linout=T)
+summary(rock.nnet)
+rock.nnet$residuals
+rock.nnet$value
+rock.nnet$fitted.values
+
+rock_TSS <- sum((perm - mean(perm))^2)
+R2.nnet <- 1 - rock.nnet / rock_TSS
+
+rock.lm <- lm(perm ~ shape+area+peri, rock)
+RSS.lm <- sum((perm - predict(rock.lm))^2)
+R2.lm <- 1 - (RSS.lm / rock_TSS)
+
+
+scaled_rock = rock
+scaled_rock$perm <- log(rock$perm)
+scaled_rock$area <- rock$area / 10000
+scaled_rock$peri <- rock$peri / 10000
+
+head(scaled_rock)
+
+
+scaled_rock.nnet <- nnet(perm ~ area + shape + peri, scaled_rock, size=3, linout=T)
+scaled_rock.nnet$value
+scaled_rock.TSS <- sum((scaled_rock$perm - mean(scaled_rock$perm))^2)
+R2_scaled_rock <- 1 - scaled_rock.nnet$value / scaled_rock.TSS
+
+
+RSS <- NULL
+RSS_scaled <- NULL
+best.RSS <- rock.nnet$value
+best.RSS_scaled <- scaled_rock.nnet$value
+
+for (i in 1:100){
+  aux.nnet <- nnet(perm ~ area+shape+peri, rock, size=3, linout=T)
+  RSS[i] <- aux.nnet$value
+  if (aux.nnet$value < best.RSS)
+    {
+    rock.nnet <- aux.nnet
+    best.RSS <- rock.nnet$value
+  }
+  }
+
+for (i in 1:100){
+  aux.nnet <- nnet(perm ~ area+shape+peri, scaled_rock, size=3, linout=T)
+  RSS_scaled[i] <- aux.nnet$value
+  if (aux.nnet$value < best.RSS_scaled){
+    scaled_rock.nnet <- aux.nnet
+    best.RSS_scaled <- scaled_rock.nnet$value} 
+  }
+
+R2.nnet <- 1 - rock.nnet$value / TSS
+R2_scaled_rock <- 1 - scaled_rock.nnet$value / scaled_rock.TSS
+plot(1:100, RSS, type="s", xlab="Iteration")
+plot(1:100, RSS_scaled, type="s", xlab="Iteration")
+```
